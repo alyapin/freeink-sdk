@@ -360,6 +360,9 @@ public:
       themed.separatorPaint = theme_.listSeparator;
     if (themed.sidePadding < 0)
       themed.sidePadding = theme_.listSidePadding;
+    // No pill edge to keep air from: values and toggles end on the side padding.
+    if (theme_.listSelectionStyle == SelectionStyle::LeftBar)
+      themed.valueInset = static_cast<int16_t>(-themed.sidePadding);
     if (themed.scrollIndicatorWidth < 0)
       themed.scrollIndicatorWidth = theme_.listScrollWidth;
     if (themed.scrollIndicatorSide == 0xFF)

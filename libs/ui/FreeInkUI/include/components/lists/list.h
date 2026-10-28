@@ -32,7 +32,8 @@ struct ListItem {
   // Emphasize this label without changing row interactivity or list-wide bold text.
   bool bold = false;
   // Glyph at the trailing end of the value slot, after the value text if any.
-  BitmapRef valueIcon{};
+  // A pointer keeps ListItem small for long lists that never use it.
+  const BitmapRef *valueIcon = nullptr;
 };
 
 // Gap between a row's value text and its trailing value icon.
@@ -115,8 +116,8 @@ struct ListProps {
   int16_t sidePadding = -1;
   int16_t textGap = 10;
   int16_t iconSize = 0;
-  // Center the icon on the label's first line instead of the whole
-  // label + subtitle block.
+  // On rows with a subtitle, center the icon on the label's first line
+  // instead of the whole label + subtitle block.
   bool iconOnFirstLine = false;
   // Extra inset for the right-aligned value slot beyond sidePadding, so a
   // trailing chevron/value keeps air from the row edge on themes with tight
@@ -480,7 +481,7 @@ inline ListRowLayout measureListRow(const DrawTarget &target, AssetResolver *ass
   } else if (item.value || item.valueIcon) {
     if (item.value) result.valueWidth = target.measureText(props.valueText.font, item.value, props.valueText).width;
     if (item.valueIcon)
-      result.valueWidth = static_cast<int16_t>(result.valueWidth + item.valueIcon.width +
+      result.valueWidth = static_cast<int16_t>(result.valueWidth + item.valueIcon->width +
                                                (item.value ? LIST_VALUE_ICON_GAP : 0));
   }
   if (item.toggle || item.value || item.valueIcon)
@@ -505,8 +506,8 @@ inline ListRowLayout measureListRow(const DrawTarget &target, AssetResolver *ass
   }
   int16_t valueHeight = item.toggle ? (props.toggleHeight < 12 ? 12 : props.toggleHeight)
       : (item.value ? target.lineHeight(props.valueText.font) : 0);
-  if (!item.toggle && item.valueIcon && item.valueIcon.height > valueHeight)
-    valueHeight = static_cast<int16_t>(item.valueIcon.height);
+  if (!item.toggle && item.valueIcon && item.valueIcon->height > valueHeight)
+    valueHeight = static_cast<int16_t>(item.valueIcon->height);
   const int16_t labelHeight = static_cast<int16_t>(labelLh * result.labelLines);
   result.labelHeight = labelHeight > valueHeight ? labelHeight : valueHeight;
   int16_t needed = rowH;
@@ -839,7 +840,7 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
           ? static_cast<int16_t>(content.x + content.width - iconSize)
           : content.x;
       const int16_t firstLineH = frame.target().lineHeight(labelStyle.font);
-      const int16_t iconY = props.iconOnFirstLine
+      const int16_t iconY = props.iconOnFirstLine && item.subtitle
           ? static_cast<int16_t>(band.y + (firstLineH - iconSize) / 2)
           : static_cast<int16_t>(content.y + (content.height - iconSize) / 2);
       Rect iconRect{iconX, iconY, iconSize, iconSize};
@@ -911,11 +912,11 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
       Rect valueRect{valueX, band.y, valueW, band.height};
       if (item.valueIcon) {
         // The icon takes the slot's trailing end (leading under RTL).
-        const int16_t iconW = static_cast<int16_t>(item.valueIcon.width);
-        const int16_t iconH = static_cast<int16_t>(item.valueIcon.height);
+        const int16_t iconW = static_cast<int16_t>(item.valueIcon->width);
+        const int16_t iconH = static_cast<int16_t>(item.valueIcon->height);
         const int16_t iconX = props.rtl ? valueX : static_cast<int16_t>(valueX + valueW - iconW);
         frame.target().bitmap(Rect{iconX, static_cast<int16_t>(band.y + (band.height - iconH) / 2), iconW, iconH},
-                              item.valueIcon, BitmapMode::Contain, style.foreground);
+                              *item.valueIcon, BitmapMode::Contain, style.foreground);
         valueRect.width = static_cast<int16_t>(valueW - iconW - (item.value ? LIST_VALUE_ICON_GAP : 0));
         if (props.rtl) valueRect.x = static_cast<int16_t>(valueX + valueW - valueRect.width);
       }
@@ -947,8 +948,9 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
                           labelStyle);
     }
 
+    // The bar follows the selection (whose label is bold) and flashes on a tap.
     if (!partial && props.selectionMarker == SelectionMarker::LeftBar &&
-        (selectedRow || hasState(state, StateActive) || hasState(state, StateFocused))) {
+        (selectedRow || hasState(state, StateActive))) {
       // Sits in the band's side margin, outside the row inset, so the label
       // does not shift when the selection moves. A tap flashes it too.
       const int16_t barW = props.markerThickness > 0 ? props.markerThickness : 2;

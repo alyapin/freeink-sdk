@@ -2613,7 +2613,8 @@ void testThemePrimitiveParity() {
   ListProps valueProps;
   valueProps.rowHeight = 40;
   const int16_t textOnly = measureListRow(draw, nullptr, 300, valueProps, secured).valueWidth;
-  secured.valueIcon = BitmapRef{lockBits, 16, 16};
+  const BitmapRef lock{lockBits, 16, 16};
+  secured.valueIcon = &lock;
   CHECK_EQ(measureListRow(draw, nullptr, 300, valueProps, secured).valueWidth,
            static_cast<int16_t>(textOnly + 16 + LIST_VALUE_ICON_GAP));
 
