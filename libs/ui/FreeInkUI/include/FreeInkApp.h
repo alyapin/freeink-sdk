@@ -312,6 +312,18 @@ public:
                   : SelectionMarker::Triangle;
         }
         break;
+      case SelectionStyle::LeftBar:
+        // No fill in any state: the bar and the bold label carry it.
+        styles.selected = styles.normal;
+        styles.focused = styles.normal;
+        styles.active = styles.normal;
+        if (themed.selectionMarker == SelectionMarker::None) {
+          themed.selectionMarker = SelectionMarker::LeftBar;
+          themed.markerInset = theme_.listBarInset;
+          themed.markerThickness = theme_.listBarWidth;
+          themed.boldSelected = true;
+        }
+        break;
       case SelectionStyle::InvertFill:
       default:
         break;

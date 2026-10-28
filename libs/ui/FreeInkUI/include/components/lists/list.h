@@ -31,7 +31,12 @@ struct ListItem {
   const char *sectionHeading = nullptr;
   // Emphasize this label without changing row interactivity or list-wide bold text.
   bool bold = false;
+  // Glyph at the trailing end of the value slot, after the value text if any.
+  BitmapRef valueIcon{};
 };
+
+// Gap between a row's value text and its trailing value icon.
+inline constexpr int16_t LIST_VALUE_ICON_GAP = 8;
 
 struct ListNav;
 
@@ -47,6 +52,8 @@ enum class SelectionMarker : uint8_t {
   Underline, // thin line under the selected row's content
   Triangle,  // right-pointing triangle at the selected row's left edge
   Bitmap, // caller-supplied glyph (markerBitmap/markerAsset) at the left edge
+  LeftBar, // solid bar over the row's height, markerInset from the band's
+           // leading edge and markerThickness wide
 };
 
 struct ListProps {
@@ -108,6 +115,9 @@ struct ListProps {
   int16_t sidePadding = -1;
   int16_t textGap = 10;
   int16_t iconSize = 0;
+  // Center the icon on the label's first line instead of the whole
+  // label + subtitle block.
+  bool iconOnFirstLine = false;
   // Extra inset for the right-aligned value slot beyond sidePadding, so a
   // trailing chevron/value keeps air from the row edge on themes with tight
   // row padding.
@@ -164,6 +174,8 @@ struct ListProps {
   int16_t markerInset = 0;     // x offset of the marker / underline start
   int16_t markerThickness = 2; // underline thickness
   bool underlineFitsText = false; // label width plus 4px on each side
+  // Bold label on the selected row (measured bold too, so wrapping matches).
+  bool boldSelected = false;
   // Glyph for SelectionMarker::Bitmap, drawn vertically centered at the
   // selected row's left edge (markerInset offset). Direct bitmap wins;
   // otherwise the asset resolves through the frame's AssetResolver.
@@ -451,12 +463,12 @@ struct ListRowLayout {
 
 inline ListRowLayout measureListRow(const DrawTarget &target, AssetResolver *assets,
                                     const int16_t width, const ListProps &props,
-                                    const ListItem &item) {
+                                    const ListItem &item, const bool selected = false) {
   ListRowLayout result;
   const int16_t rowH = props.rowHeight > 0 ? props.rowHeight : 36;
   const int16_t sidePad = props.sidePadding < 0 ? 8 : props.sidePadding;
   TextStyle labelStyle = props.labelText;
-  labelStyle.bold = labelStyle.bold || item.bold;
+  labelStyle.bold = labelStyle.bold || item.bold || (selected && props.boldSelected);
   const int16_t labelLh = target.lineHeight(labelStyle.font);
   const BitmapRef icon = item.icon ? item.icon : resolveBitmap(assets, item.iconAsset);
   const int16_t iconSize = icon ? (props.iconSize > 0 ? props.iconSize : icon.width) : 0;
@@ -465,14 +477,17 @@ inline ListRowLayout measureListRow(const DrawTarget &target, AssetResolver *ass
   result.labelWidth = contentWidth;
   if (item.toggle) {
     result.valueWidth = props.toggleWidth < 18 ? 18 : props.toggleWidth;
-  } else if (item.value) {
-    result.valueWidth = target.measureText(props.valueText.font, item.value, props.valueText).width;
+  } else if (item.value || item.valueIcon) {
+    if (item.value) result.valueWidth = target.measureText(props.valueText.font, item.value, props.valueText).width;
+    if (item.valueIcon)
+      result.valueWidth = static_cast<int16_t>(result.valueWidth + item.valueIcon.width +
+                                               (item.value ? LIST_VALUE_ICON_GAP : 0));
   }
-  if (item.toggle || item.value)
+  if (item.toggle || item.value || item.valueIcon)
     result.labelWidth = static_cast<int16_t>(result.labelWidth - result.valueWidth -
                                             props.valueInset - props.textGap);
   if (props.balanceWrappedLabelWithValue && labelStyle.maxLines > 1 &&
-      (item.toggle || item.value) && item.label &&
+      (item.toggle || item.value || item.valueIcon) && item.label &&
       target.measureText(labelStyle.font, item.label, labelStyle).width > result.labelWidth) {
     const int16_t cap = static_cast<int16_t>(contentWidth * 3 / 5);
     if (result.labelWidth > cap) result.labelWidth = cap;
@@ -488,8 +503,10 @@ inline ListRowLayout measureListRow(const DrawTarget &target, AssetResolver *ass
     result.subtitleHeight = props.subtitleText.maxLines > 1
         ? measureWrappedText(target, item.subtitle, props.subtitleText, contentWidth).height : subLh;
   }
-  const int16_t valueHeight = item.toggle ? (props.toggleHeight < 12 ? 12 : props.toggleHeight)
+  int16_t valueHeight = item.toggle ? (props.toggleHeight < 12 ? 12 : props.toggleHeight)
       : (item.value ? target.lineHeight(props.valueText.font) : 0);
+  if (!item.toggle && item.valueIcon && item.valueIcon.height > valueHeight)
+    valueHeight = static_cast<int16_t>(item.valueIcon.height);
   const int16_t labelHeight = static_cast<int16_t>(labelLh * result.labelLines);
   result.labelHeight = labelHeight > valueHeight ? labelHeight : valueHeight;
   int16_t needed = rowH;
@@ -532,7 +549,8 @@ inline int listContentHeight(const DrawTarget& target, AssetResolver* assets, Re
       height += headerH + (i ? props.sectionGap : 0);
     } else {
       if (item.sectionHeading && item.sectionHeading[0]) height += headerH + gap + (i ? props.sectionGap : 0);
-      height += measureListRow(target, assets, static_cast<int16_t>(width), props, item).height;
+      height += measureListRow(target, assets, static_cast<int16_t>(width), props, item,
+                               props.selectedIndex == static_cast<int16_t>(i)).height;
     }
   }
   return height;
@@ -654,10 +672,11 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
       cursorY = static_cast<int16_t>(cursorY + headerH + rowGap);
       continue;
     }
+    const bool selectedRow = props.selectedIndex == static_cast<int16_t>(i);
     TextStyle labelStyle = props.labelText;
-    labelStyle.bold = labelStyle.bold || item.bold;
+    labelStyle.bold = labelStyle.bold || item.bold || (selectedRow && props.boldSelected);
     const ListRowLayout layout = measureListRow(frame.target(), frame.assets(),
-                                                 rowArea.width, props, item);
+                                                 rowArea.width, props, item, selectedRow);
     const int16_t itemH = layout.height;
     const int16_t subH = layout.subtitleHeight;
     const bool hasSectionHeading = item.sectionHeading != nullptr && item.sectionHeading[0] != '\0';
@@ -819,10 +838,11 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
       const int16_t iconX = props.rtl
           ? static_cast<int16_t>(content.x + content.width - iconSize)
           : content.x;
-      Rect iconRect{
-          iconX,
-          static_cast<int16_t>(content.y + (content.height - iconSize) / 2),
-          iconSize, iconSize};
+      const int16_t firstLineH = frame.target().lineHeight(labelStyle.font);
+      const int16_t iconY = props.iconOnFirstLine
+          ? static_cast<int16_t>(band.y + (firstLineH - iconSize) / 2)
+          : static_cast<int16_t>(content.y + (content.height - iconSize) / 2);
+      Rect iconRect{iconX, iconY, iconSize, iconSize};
       frame.target().bitmap(iconRect, icon, BitmapMode::Contain,
                             style.foreground);
       if (!props.rtl)
@@ -881,7 +901,7 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
       }
       availW = static_cast<int16_t>(availW - togW - props.valueInset - props.textGap);
       if (props.rtl) labelX = static_cast<int16_t>(band.x + band.width - availW);
-    } else if (item.value) {
+    } else if (item.value || item.valueIcon) {
       TextStyle valueStyle = textStyleWithForeground(props.valueText, style.foreground);
       valueStyle.align = props.rtl ? TextAlign::Left : TextAlign::Right;
       const int16_t valueW = layout.valueWidth;
@@ -889,7 +909,17 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
           ? static_cast<int16_t>(band.x + props.valueInset)
           : static_cast<int16_t>(band.x + availW - valueW - props.valueInset);
       Rect valueRect{valueX, band.y, valueW, band.height};
-      frame.target().text(valueRect, item.value, valueStyle);
+      if (item.valueIcon) {
+        // The icon takes the slot's trailing end (leading under RTL).
+        const int16_t iconW = static_cast<int16_t>(item.valueIcon.width);
+        const int16_t iconH = static_cast<int16_t>(item.valueIcon.height);
+        const int16_t iconX = props.rtl ? valueX : static_cast<int16_t>(valueX + valueW - iconW);
+        frame.target().bitmap(Rect{iconX, static_cast<int16_t>(band.y + (band.height - iconH) / 2), iconW, iconH},
+                              item.valueIcon, BitmapMode::Contain, style.foreground);
+        valueRect.width = static_cast<int16_t>(valueW - iconW - (item.value ? LIST_VALUE_ICON_GAP : 0));
+        if (props.rtl) valueRect.x = static_cast<int16_t>(valueX + valueW - valueRect.width);
+      }
+      if (item.value) frame.target().text(valueRect, item.value, valueStyle);
       availW = static_cast<int16_t>(availW - valueW - props.valueInset -
                                     props.textGap);
       if (props.rtl)
@@ -917,7 +947,16 @@ void list(Frame<MaxInteractions> &frame, Rect rect, const ListProps &props) {
                           labelStyle);
     }
 
-    if (!partial && props.selectedIndex == static_cast<int16_t>(i) &&
+    if (!partial && props.selectionMarker == SelectionMarker::LeftBar &&
+        (selectedRow || hasState(state, StateActive) || hasState(state, StateFocused))) {
+      // Sits in the band's side margin, outside the row inset, so the label
+      // does not shift when the selection moves. A tap flashes it too.
+      const int16_t barW = props.markerThickness > 0 ? props.markerThickness : 2;
+      const int16_t barX = props.rtl
+          ? static_cast<int16_t>(rect.right() - props.markerInset - barW)
+          : static_cast<int16_t>(rect.x + props.markerInset);
+      frame.target().fill(Rect{barX, row.y, barW, row.height}, props.markerPaint);
+    } else if (!partial && props.selectedIndex == static_cast<int16_t>(i) &&
         props.selectionMarker != SelectionMarker::None) {
       if (props.selectionMarker == SelectionMarker::Underline) {
         // RTL mirrors which edge carries markerInset's extra gap, matching

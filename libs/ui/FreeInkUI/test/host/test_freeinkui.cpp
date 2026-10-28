@@ -2586,6 +2586,37 @@ void testThemePrimitiveParity() {
   list(frame2, Rect{0, 0, 480, 100}, menu);
   CHECK_EQ(draw2.countKind(FakeDrawTarget::Op::Triangle), 1u);
 
+  // LeftBar marker: a bar in the band's margin over the selected row only.
+  FakeDrawTarget drawBar;
+  Frame<16> frameBar(drawBar, device, input, interactions);
+  menu.selectionMarker = SelectionMarker::LeftBar;
+  menu.markerInset = 10;
+  menu.markerThickness = 10;
+  menu.rowInset = 20;
+  list(frameBar, Rect{0, 0, 480, 100}, menu);
+  int bars = 0;
+  for (size_t i = 0; i < drawBar.opCount; ++i) {
+    const FakeDrawTarget::Op& op = drawBar.ops[i];
+    if (op.kind == FakeDrawTarget::Op::Fill && op.rect.x == 10 && op.rect.width == 10) {
+      CHECK_EQ(op.rect.y, 40);
+      CHECK_EQ(op.rect.height, 40);
+      ++bars;
+    }
+  }
+  CHECK_EQ(bars, 1);
+
+  // A trailing value icon widens the value slot by its width plus the gap.
+  static const uint8_t lockBits[2 * 16] = {};
+  ListItem secured{};
+  secured.label = "Home";
+  secured.value = "saved";
+  ListProps valueProps;
+  valueProps.rowHeight = 40;
+  const int16_t textOnly = measureListRow(draw, nullptr, 300, valueProps, secured).valueWidth;
+  secured.valueIcon = BitmapRef{lockBits, 16, 16};
+  CHECK_EQ(measureListRow(draw, nullptr, 300, valueProps, secured).valueWidth,
+           static_cast<int16_t>(textOnly + 16 + LIST_VALUE_ICON_GAP));
+
   // RoundedRaff cover card bands: top band rounds only its top corners.
   FakeDrawTarget draw3;
   Frame<16> frame3(draw3, device, input, interactions);

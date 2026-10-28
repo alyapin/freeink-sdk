@@ -624,6 +624,8 @@ enum class SelectionStyle : uint8_t {
   LightPill,  // LightGray dither fill, text stays black
   Underline,  // rows keep their normal style; underline marker
   Triangle,   // rows keep their normal style; triangle marker
+  LeftBar,    // rows keep their normal style; solid bar at the band's leading
+              // edge and a bold label on the selected row
 };
 
 // Sentinel for radius props: inherit the theme's shape token. Screen wrappers
@@ -664,6 +666,10 @@ struct ThemeTokens {
   int16_t listInset = 0; // horizontal inset of the rows (scroll indicator stays
                          // at the band edge)
   SelectionStyle listSelectionStyle = SelectionStyle::InvertFill;
+  // LeftBar geometry: the bar's offset from the list band's leading edge and
+  // its width.
+  int16_t listBarInset = 10;
+  int16_t listBarWidth = 10;
   int16_t listScrollWidth = 3; // scroll indicator thickness
   uint8_t listScrollSide = 0;  // 0 = right edge, 1 = left edge
   // Inward offset of the scroll indicator from the band edge. Normally 0 (the
