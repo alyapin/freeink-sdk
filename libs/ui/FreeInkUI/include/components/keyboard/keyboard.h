@@ -124,6 +124,9 @@ struct KeyboardProps {
   // letters, numbers, or symbols use the narrowest unit that fits any such
   // row, while control-only rows continue to fill their available width.
   bool uniformKeyWidth = true;
+  // Draw each key's long-press alternate as a corner hint. Off keeps one
+  // centered label per key, for apps that show alternates elsewhere.
+  bool altHints = true;
 };
 
 // Preferred total height for touch entry. Match the height of a character key
@@ -631,7 +634,7 @@ void keyboard(Frame<MaxInteractions>& frame, Rect rect, const KeyboardProps& pro
     if (props.selectedIndex == selectedIndex) state |= props.inactiveSelection ? StateFocused : StateSelected;
     if (!key.enabled || key.kind == KeyKind::Disabled) state |= StateDisabled;
     const ActionId action = actionFor(key.kind);
-    const bool hasAltHint = key.kind == KeyKind::Normal && key.alt;
+    const bool hasAltHint = props.altHints && key.kind == KeyKind::Normal && key.alt;
     ButtonProps bp;
     const char* label =
         (key.kind == KeyKind::Space || key.kind == KeyKind::Delete || key.kind == KeyKind::Lang) ? nullptr : key.label;

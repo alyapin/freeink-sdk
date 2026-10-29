@@ -4590,6 +4590,21 @@ void testCompactKeyboardAltLabelStaysInsideKey() {
   }
   CHECK_EQ(labels, 2);
   CHECK(primaryLabel.y >= altHint.bottom());
+
+  // altHints off: only the primary label, centered like any other key.
+  draw.opCount = 0;
+  props.altLabelGap = 4;
+  props.altHints = false;
+  keyboard(frame, Rect{100, 100, 100, 56}, props);
+  labels = 0;
+  for (size_t i = 0; i < draw.opCount; ++i) {
+    const auto &op = draw.ops[i];
+    if (op.kind != FakeDrawTarget::Op::Text)
+      continue;
+    ++labels;
+    CHECK_EQ(op.rect.x + op.rect.width / 2, 150);
+  }
+  CHECK_EQ(labels, 1);
 }
 
 void testQwertyKeyboardSpacingOverrides() {
